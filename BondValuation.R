@@ -69,7 +69,6 @@ abline(h = 100, col = 2)
 axis(side = 4)
 
 # Create a function to look up prices 1/8 of a point on either side of a ytm quote
-
 price_lookup <- function(yld){
   prc_yield[(which(prc_yield$yield == yld) - 1): (which(prc_yield$yield == yld) + 1), ]
 }
@@ -110,4 +109,18 @@ ytm <- function(cf) {
 
 ytm(cf)
 
-# estimate duration on a bond
+# estimate duration on a bond with par 100, coupon 0.05, 10 year maturity, and a 0.04 yield
+p <- bond_val(100, 0.05, 10, 0.04)
+
+p_down <- bond_val(100, 0.05, 10, 0.03)
+p_up <- bond_val(100, 0.05, 10, 0.05)
+
+duration <- (p_down - p_up) / (2 * p * 0.01)
+duration
+
+duration_pct_change <- -duration * 0.01
+duration_pct_change
+
+duration_dollar_change <- duration_pct_change * p
+duration_dollar_change
+
