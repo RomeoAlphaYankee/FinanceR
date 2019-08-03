@@ -1,6 +1,8 @@
 # utilize the PortfolioAnalytics package to optimize portfolios
 
 library(PortfolioAnalytics)
+library(ROI)
+
 data("edhec")
 
 # Use historical hedge fund data
@@ -49,6 +51,7 @@ opt
 chart.RiskReward(opt, risk.col = "StdDev", return.col = "mean", chart.assets = TRUE)
 
 # Examine optimized portfolio weights
+# No diversification
 extractWeights(opt)
 
 # Extract objective measures
@@ -71,11 +74,11 @@ lines(cumprod(1 + prt.rtn) - 1, col = "red")
 addLegend("topleft", legend.names = c("Optimized", "Benchmark"), col = c("blue", "red"), lwd = 2)
 
 # It would appear the optimized portfolio outperformed the equal weighted portfolio
-# However, it failed to reduce standard devivation
+# However, it failed to reduce standard devivation or achieve diversification
 sd(opt.prt.rtn)
 sd(prt.rtn)
 
-# Check for diversification, or lack thereof
+# Check weights for diversification, or lack thereof
 barplot(opt$weights)
 
 # Check risk budget
@@ -177,73 +180,97 @@ opt4 <- optimize.portfolio(R = ret, portfolio = prt.spc, optimize_method = "ROI"
 barplot(opt4$weights)
 opt4.prt.rtn <- Return.portfolio(ret, weights = opt4$weights)
 
-# Clean up the process of comparing portfolios
-portfolios <- cbind(prt.rtn, opt.prt.rtn, opt2.prt.rtn, opt3.prt.rtn, opt4.prt.rtn)
-names(portfolios) <- c("Equal", "Quadratic", "Random", "DEoptim", "MaxSR")
-
-lapply(portfolios, table.AnnualizedReturns, scale = 12, Rf = 0.02 / 12)
-
 # Check performance
 charts.PerformanceSummary(R = opt4.prt.rtn, Rf = 0.02, main = "MaxSR")
 
-# Plot the returns of all portfolio solutions
-chart.CumReturns(opt4.prt.rtn, lwd = 2, ylim = range(cumprod(1 + opt.prt.rtn) - 1))
-lines(cumprod(1 + prt.rtn) - 1, col = "blue")
-lines(cumprod(1 + opt.prt.rtn) - 1, col = "green")
-lines(cumprod(1 + opt2.prt.rtn) - 1, col = "red")
-lines(cumprod(1 + opt3.prt.rtn) - 1, col = "yellow")
-lines(cumprod(1 + opt5.prt.rtn) - 1, col = "orange")
-addLegend(legend.loc = "topleft", legend.names = c("MaxSR", "Equal Weight", "Quadratic", "Random", "DEoptim"),
-          lty = 1, lwd = 2, col = c("black", "blue", "green", "red", "yellow"))
-
-# Looking for higher return with more diversification than the original optimization
+# Looking for higher return than the risk budget optimization, but with more  
+# diversification than the original quadratic optimization
 # Add a box constraint to the weights
-prt.spc5 <- add.constraint(portfolio = prt.spc, type = "box", min = 0, max = 0.2)
+prt.spc5 <- add.constraint(portfolio = prt.spc, type = "box", min = 0, max = 0.15)
 opt5 <- optimize.portfolio(R = ret, portfolio = prt.spc5, optimize_method = "ROI")
 opt5.prt.rtn <- Return.portfolio(R = ret, weights = opt5$weights)
 
 barplot(opt5$weights)
 portfolios$Box <- opt5.prt.rtn
 
-lapply(portfolios, table.AnnualizedReturns, Rf = 0.02 / 12)
 vol_budget <- StdDev(R = ret, portfolio_method = "component", weights = opt5$weights)
 barplot(vol_budget$pct_contrib_StdDev)
 
+table.DownsideRiskRatio(opt5.prt.rtn)
+
+# Plot the returns of all portfolio solutions
+chart.CumReturns(prt.rtn, lwd = 2, ylim = range(cumprod(1 + opt.prt.rtn) - 1))
+lines(cumprod(1 + opt.prt.rtn) - 1, col = "green")
+lines(cumprod(1 + opt2.prt.rtn) - 1, col = "red")
+lines(cumprod(1 + opt3.prt.rtn) - 1, col = "yellow")
+lines(cumprod(1 + opt4.prt.rtn) - 1, col = "blue")
+lines(cumprod(1 + opt5.prt.rtn) - 1, col = "grey")
+addLegend(legend.loc = "topleft", legend.names = c("Equal Weight", "Quadratic", "Random", "DEoptim", "MaxSR", "Box"),
+          lty = 1, lwd = 2, col = c("black", "green", "red", "yellow", "blue", "grey"))
+
+# Clean up the process of comparing portfolios
+portfolios <- cbind(prt.rtn, opt.prt.rtn, opt2.prt.rtn, opt3.prt.rtn, opt4.prt.rtn, opt5.prt.rtn)
+names(portfolios) <- c("Equal", "Quadratic", "Random", "DEoptim", "MaxSR", "Box")
+
+lapply(portfolios, table.AnnualizedReturns, scale = 12, Rf = 0.02 / 12)
+lapply(portfolios, FUN = SortinoRatio, MAR = 0.001)
+lapply(portfolios, FUN = table.Drawdowns)
+
+
+# Apply periodic rebalancing to all portfolios
+# Start with a simple quarterly rebalance for the equal weight portfolio
+equal.rebal <- Return.rebalancing(R = ret, weights =  rep(1 / ncol(ret), ncol(ret)), rebalance_on = "quarters")
+
+charts.PerformanceSummary(equal.rebal)
+table.AnnualizedReturns(equal.rebal)
+
+# Rebalance using the various optimization methods
+quadratic.rebal <- optimize.portfolio.rebalancing(R = ret, portfolio = prt.spc, 
+                                              optimize_method = "ROI", rebalance_on = "quarters", 
+                                              training_period = 60, rolling_window = 60)
+
+Return.portfolio(R = ret, weights = extractWeights(quadratic.rebal), rebalance_on = "quarters")
+
+
+random.rebal <- optimize.portfolio.rebalancing(R = ret, portfolio = prt.spc2, 
+                                              optimize_method = "random", rebalance_on = "quarters", 
+                                              training_period = 60, rolling_window = 60, trace = TRUE)
+
+random.rebal.returns <- Return.portfolio(R = ret, weights = extractWeights(random.rebal), rebalance_on = "quarters")
+
+
+DEoptim.rebal <- optimize.portfolio.rebalancing(R = ret, portfolio = prt.spc2, 
+                                               optimize_method = "DEoptim", rebalance_on = "quarters", 
+                                               training_period = 60, rolling_window = 60, trace = TRUE)
+
+DEoptim.rebal.returns <- Return.portfolio(R = ret, weights = extractWeights(DEoptim.rebal), rebalance_on = "quarters")
+
+chart.CumReturns(equal.rebal["2002/"])
+lines(cumprod(1 + random.rebal.returns) - 1, col = "blue")
+lines(cumprod(1 + DEoptim.rebal.returns) - 1, col = "red")
+addLegend(legend.loc = "topleft", legend.names = c("Equal Weight", "Random", "DEoptim"), lwd = 2, col = c("black", "blue", "red"))
+
+
+maxSR.rebal <- optimize.portfolio.rebalancing(R = ret, portfolio = prt.spc, 
+                                               optimize_method = "ROI", rebalance_on = "quarters", 
+                                               training_period = 60, rolling_window = 60, maxSR.rebal = TRUE)
+
+maxSR.rebal.returns <- Return.portfolio(R = ret, weights = extractWeights(maxSR.rebal))
+
+
+
+box.rebal <- optimize.portfolio.rebalancing(R = ret, portfolio = prt.spc, 
+                                               optimize_method = "ROI", rebalance_on = "quarters", 
+                                               training_period = 60, rolling_window = 60)
 
 
 
 
 
-
-# Try periodic rebalancing
-opt.rebal <- optimize.portfolio.rebalancing(R = ret, portfolio = prt.spc, 
-                                            optimize_method = "random", rebalance_on = "years", 
-                                            training_period = 60, rolling_window = 60, trace = TRUE)
-opt.rebal
-
-rr <- Return.portfolio(ret, weights = extractWeights(opt.rebal))
-charts.PerformanceSummary(rr)
+quadratic.rebal.returns <- Return.portfolio(R = ret, weights = extractWeights(quadratic.rebal["2001/ "]))
+charts.PerformanceSummary(quadratic.rebal.returns)
 
 # Chart results of rebalanced portfolio
-chart.CumReturns(rr, ylim = c(0, 0.75))
-lines(cumprod(1 + prt.rtn["2002/"]) - 1, col = "blue")
-lines(cumprod(1 + opt.prt.rtn["2002/"]) - 1, col = "red")
-lines(cumprod(1 + opt2.prt.rtn["2002/"]) - 1, col = "green")
-
-# Rebalancing has amplified estimation error and locked in drawdown
-
-# Add a weight sum constraint
-prt.spc <- add.constraint(portfolio = prt.spc, type = "weight_sum", min_sum = 1, max_sum = 1)
-
-
-# Add a group constraint
-# prt.spc <- add.constraint(portfolio = prt.spc, type = "group", groups = list(c(1, 5, 7, 9, 10, 11), c(2, 3, 4, 6, 8, 12)), group_min = 0.40, group_max = 0.60)
-
-# Add a box constraint
-prt.spc <- add.constraint(portfolio = prt.spc, type = "box", min = 0.05, max = 0.40)
-
-opt2.rebal <- optimize.portfolio.rebalancing(R = ret, portfolio = prt.spc, optimize_method = "random", rebalance_on = "quarters", 
-                                             training_period = 60, rolling_window = 60, trace = TRUE)
 
 # Plot results of second rebalanced portfolio optimization
 chart.Weights(opt2.rebal)
@@ -251,14 +278,9 @@ rr2 <- Return.portfolio(ret, weights = extractWeights(opt2.rebal))
 chart.CumReturns(rr2, ylim = c(0, 0.75))
 
 # Compare results of prior optimizations
-lines(cumprod(1 + prt.rtn["2002/"]) - 1, col = "blue")
-lines(cumprod(1 + opt.prt.rtn["2002/"]) - 1, col = "red")
-lines(cumprod(1 + opt2.prt.rtn["2002/"]) - 1, col = "green")
-lines(cumprod(1 + rr) - 1, col = "gray")
+
 
 # Inspect risk / reward metrics
 charts.PerformanceSummary(rr2)
 
-cbind(rebal2 = SharpeRatio(rr2), ew = SharpeRatio(prt.rtn["2002/"]), optimized = SharpeRatio(opt.prt.rtn["2002/"]),
-      optimized2 = SharpeRatio(opt2.prt.rtn["2002/"]), rebal1 = SharpeRatio(rr))
 
