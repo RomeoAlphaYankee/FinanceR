@@ -108,6 +108,11 @@ returns %>%
   hc_tooltip(pointFormat = "{point.strategy}: ${point.growth: .2f}")
 
 # Redo the strategy incorporating a z-score
+# First create a rolling sd function to use in dplyr mutate
+
+roll_sd_200 <- rollify(sd, 252)
+
+# Redo the model in one easy step adding in the z-score
 trend_z_results <- prices %>% 
   na.locf() %>%
   select(date, symbol, adjusted) %>%
@@ -120,7 +125,8 @@ trend_z_results <- prices %>%
   na.omit() %>%
   mutate(trend_signal = if_else(sma_50 > sma_200, 1, 0),
          z_spread = sp500 - sma_200,
-         z_score = z_spread / sd(z_spread),
+         z_sd = roll_sd_200(z_spread),
+         z_score = z_spread / z_sd,
          z_signal = if_else(lag(z_score, 1) > 2 & 
                               lag(z_score, 2) > 2, 
                             0, 1),
@@ -146,7 +152,6 @@ trend_z_results %>%
 # Chart performance summary
 charts.PerformanceSummary(xts(trend_z_results$trend_z_returns, order.by = trend_z_results$date))
 
-
 # Create a table of downside risks
 risks_z <- trend_z_results %>% 
   tq_performance(Ra = trend_z_returns, performance_fun = table.DownsideRisk)
@@ -154,5 +159,5 @@ risks_z <- trend_z_results %>%
 risks_z <- rbind(risks_z, tq_performance(trend_z_results, trend_returns, performance_fun = table.DownsideRisk))
 risks_z <- rbind(risks_z, tq_performance(trend_z_results, sp500_returns, performance_fun = table.DownsideRisk))
 
-rownames(risks_z) <- c("trend_z", "trend", "sp500")
+rownames(risks_z) <- c("Trend Z", "Trend", "S&P 500")
 t(risks_z)
