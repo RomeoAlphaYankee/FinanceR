@@ -4,7 +4,7 @@ library(PortfolioAnalytics)
 library(MASS)
 data("edhec")
 
-asset_returns <- edhec
+asset_returns <- edhec[ , 1:12]
 
 # Create a custom benchmark
 # Create a vector of equal weights
@@ -15,11 +15,8 @@ r_benchmark <- Return.portfolio(R = asset_returns, weights = equal_weights, reba
 colnames(r_benchmark) <- "benchmark"
 
 # Look at the benchmark returns
-plot(r_benchmark)
+plot(r_benchmark, type = "h")
 chart.CumReturns(r_benchmark)
-
-# Base portfolio specification
-port_spec <- portfolio.spec(assets = colnames(asset_returns))
 
 # Create the portfolio specification
 port_spec <- portfolio.spec(assets = colnames(asset_returns))
@@ -63,7 +60,7 @@ port_spec <- add.objective(portfolio = port_spec,
 # Run the optimization
 opt_rebal_rb <- optimize.portfolio.rebalancing(R = asset_returns, 
                                                portfolio = port_spec, 
-                                               optimize_method = "random",
+                                               optimize_method = "DEoptim",
                                                trace = TRUE,
                                                rebalance_on = "quarters", 
                                                training_period = 60,
@@ -107,7 +104,7 @@ returns_rb_robust <- Return.portfolio(R = asset_returns, weights = extractWeight
 colnames(returns_rb_robust) <- "rb_robust"
 
 # Combine the returns
-ret <- cbind(r_benchmark, returns_base, returns_rb, returns_rb_robust)
+ret <- cbind(edhec[ , 13], r_benchmark, returns_base, returns_rb, returns_rb_robust)
 
 # Compute annualized returns
 table.AnnualizedReturns(R = ret)
