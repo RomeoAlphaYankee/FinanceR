@@ -142,9 +142,22 @@ multiples <- data.frame(PE = mean(peers[-pfe_index, "p_e"], na.rm = TRUE),
                         PB = mean(peers[-pfe_index, "p_b"], na.rm = TRUE))
 
 # Calculate the implied valuation
-implied_val <- multiples *  c(peers["PFE", "eps_ntm"], peers["PFE", "p_b"])
+implied_val <- multiples *  peers["PFE", c("eps_ntm", "book")]
 
 round(implied_val, 2)
+
+# Clearly an outlier skewing the P/B multiple. Identify and remove.
+pb_out <- which(peers$p_b == max(peers$p_b, na.rm = TRUE))
+
+# Re-calculate average multiples without outlier
+multiples <- data.frame(PE = mean(peers[-pfe_index, "p_e"], na.rm = TRUE), 
+                        PB = mean(peers[-c(pfe_index, pb_out), "p_b"], na.rm = TRUE))
+
+# Calculate the implied valuation
+implied_val <- multiples *  peers["PFE", c("eps_ntm", "book")]
+
+round(implied_val, 2)
+
 
 # Look at the relationship between price / book ratio and ROE
 # First calculate ROE, excluding negative book value or negative earnings
@@ -184,15 +197,28 @@ implied_price <- implied_pb * peers$book[pfe_index]
 implied_price
 
 # Print the results
+# Assemble a table of peer mean relative valuation
+multiple_means <- data.frame(
+  "Means" = round(colMeans(peers[-pfe_index, 5:6], na.rm = TRUE), 1),
+  "Ex-LLY" = round(colMeans(peers[-c(pfe_index, roe_out), 5:6], na.rm = TRUE), 1),
+  check.names = FALSE
+)
+
+rownames(multiple_means) <- c("P/E", "P/B")
+
+PFE_val <- data.frame(
+  Last = peers["PFE", "last"],
+  DDM = round(as.numeric(value), 2),
+  "P/E" = round(as.numeric(implied_val[1]), 2),
+  "P/B" = round(as.numeric(implied_val[2]), 2),
+  ROE = round(implied_price, 2),
+  check.names = FALSE
+)
+
+rownames(PFE_val) <- "Valuation:"
+
+
 peers
-
-cat("         P/E  P/B", "\n",
-    " Means:", round(colMeans(peers[5:6], na.rm = TRUE), 1), "\n",
-    "Ex-LLY:", round(colMeans(peers[-6, 5:6], na.rm = TRUE),1))
-
-cat("PFE Valuation:", "\n",
-    "Last", peers["PFE", "last"], "\n",
-    "DDM ", round(as.numeric(value), 2), "\n",
-    "P/E ", round(as.numeric(implied_val[1]), 2), "\n",
-    "P/B ", round(as.numeric(implied_val[2]), 2), "\n",
-    "ROE ", round(implied_price, 2))
+multiple_means
+PFE_val
+rowMeans(PFE_val)
