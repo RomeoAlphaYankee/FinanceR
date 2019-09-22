@@ -12,9 +12,10 @@
 
 library(xts)
 library(quantmod)
+library(PerformanceAnalytics)
 
 # Establish a ten year timeframe
-from <- Sys.Date() - (252 * 10)
+from <- Sys.Date() - (365 * 7)
 to <- Sys.Date()
 
 # Get stock prices, and convert to returns
@@ -216,7 +217,6 @@ PFE_val <- data.frame(
 )
 
 rownames(PFE_val) <- "Valuation:"
-
 
 peers
 multiple_means
