@@ -14,7 +14,7 @@ library(xts)
 library(quantmod)
 library(PerformanceAnalytics)
 
-# Establish a ten year timeframe
+# Establish a timeframe
 from <- Sys.Date() - (365 * 7)
 to <- Sys.Date()
 
