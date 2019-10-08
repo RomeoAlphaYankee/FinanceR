@@ -387,21 +387,83 @@ drivers <-readWorksheet(wb, "drivers_ann")
 drivers
 
 stats <- readWorksheet(wb, "industry_stats")
-as.Date(as.character(stats$Col1), format = 'Year')
+head(stats)
+stats <- stats[-ncol(stats)]
 
-?as.POSIXct
-parse_date_time(stats$Col1)
+head(stats)
+stats[ , 1:5] <- stats[ , 1:5] / 100
 
-stats <- as.xts(stats, order.by = as.Date(stats$Col1))
-
-from <- "1994"
+# Download some industry drivers, including payroll growth and consumer spending
+from <- as.Date('1994-12-01')
+from
 
 payroll <- getSymbols("PAYEMS", from = from, src = "FRED", auto.assign = FALSE)
 payroll <- to.yearly(payroll)
-payroll <- diff(Cl(payroll))
-payroll <- payroll["1995/"]
+payroll <- Cl(payroll["1994-12/"])
+payroll <- diff(log(payroll))[-1]
 
 head(payroll)
 
-plot(as.numeric(x = payroll), y = stats$demand[-1], col = "blue")
-abline(reg = lm(stats$demand[-1] ~ payroll), col = "red")
+consum <- getSymbols("PCE", src = "FRED", from = from, auto.assign = FALSE)
+head(consum)
+
+consum <- to.yearly(consum)
+consum <- Cl(consum["1994-12/"])
+consum <- diff(log(consum))[-1]
+head(consum)
+
+# Merge our data
+# We have some time differences with the low frequency data, and some forecast years
+# Trim them off to create a training set
+
+stats_train <- xts(stats[-nrow(stats), -1], order.by = index(consum))
+
+stats_train <- merge(stats_train, payroll)
+stats_train <- merge(stats_train, consum)
+head(stats_train)
+
+colnames(stats_train) <- c(colnames(stats_train)[-c((ncol(stats_train) - 1):ncol(stats_train))], "payroll", "pce")
+
+tail(stats_train)
+
+stats_train <- stats_train[-((nrow(stats_train) - 1):nrow(stats_train)), ]
+stats_train <- stats_train[-1, ]
+
+# Plot and regress demand against change in non-farm payroll
+plot(as.numeric(stats_train$payroll), as.numeric(stats_train$demand), 
+     main = "Change in Demand Given Payrolls",
+     xlab = "Change in non-farm payrolls",
+     ylab = "Change in lodging demand", 
+     col = "blue")
+abline(reg = lm(demand ~ payroll, data = stats_train), col = "red")
+
+# Plot and regress demand against change in PCE
+plot(x = as.numeric(stats_train$pce), y = as.numeric(stats_train$demand), 
+     main = "Change in Demand Given PCE",
+     xlab = "Change in PCE",
+     ylab = "Change in Demand",
+     col = "blue")
+abline(reg = lm(demand ~ pce, data = stats_train), col = "red")
+
+# Plot and regress change in revpar against change in PCE
+plot(x = as.numeric(stats_train$pce), y = as.numeric(stats_train$RevPAR_change), 
+     main = "Change in RevPAR Given PCE",
+     xlab = "Change in PCE",
+     ylab = "Change in RevPAR",
+     col = "blue")
+abline(reg = lm(RevPAR_change ~ pce, data = stats_train), col = "red")
+
+reg <- lm(formula = RevPAR_change ~ (payroll + supply + pce), data = as.data.frame(stats_train))
+
+# Let's plug in some more recent data on payrolls, PCE, and industry supply growth
+# to forecast RevPAR changes for 2019. 
+
+reg$coefficients[1] + (reg$coefficients[2] * as.numeric(last(payroll))) + (reg$coefficients[3] * as.numeric(stats$supply[nrow(stats)])) + (reg$coefficients[3] * as.numeric(last(consum)))
+
+# According to our model, industry estimates for RevPAR growth remain too high based upon the
+# signinficant amount of new supply entering the market, and the slowdown in job growth.
+
+# We should look for downward revenue and earnings revisions, which will probably result
+# in additional multiple contraction, despite relatively low valuations.
+
+# I would expect well managed lodging REITs to sell assets, and repurchase shares below NAV.
