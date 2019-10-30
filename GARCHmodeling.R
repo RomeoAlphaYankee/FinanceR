@@ -99,17 +99,58 @@ sqrt(garchuncvar)
 
 # Predicted mean
 garchmean <- fitted(garchfit)
-
-# Predicted volatilities
-garchvol <- sigma(garchfit)
-
-# Forecast the folatility of future returns
-garchforecast <- ugarchforecast(fitORspec = garchfit,
-                                n.ahead = 5)
+tail(garchmean, 1)
 
 # Estimated volatilities
 garchvol <- sigma(garchfit)
 plot(garchvol["2008/2009"])
 
+# Forecast the folatility of future returns
+garchforecast <- ugarchforecast(fitORspec = garchfit,
+                                n.ahead = 5)
 # Extract the predicted volatilities and print them
 print(sigma(garchforecast))
+
+# Compute the annualized volatility
+annualvol <- sqrt(252) * sigma(garchfit)
+
+# Compute the 5% vol target weights  
+vt_weights <- 0.05 / annualvol
+
+# Compare the annualized volatility to the portfolio weights in a plot
+plot(merge(annualvol, vt_weights), multi.panel = TRUE)
+
+# obtain standardized returns
+stdret <- residuals(garchfit, standardize = TRUE)
+
+library(PerformanceAnalytics)
+chart.Histogram(sp500ret, methods = c("add.normal", "add.density"),
+                colorset = c("gray", "red", "blue"))
+
+
+# Change distribution model arguement to Student T
+garchspec <- ugarchspec(mean.model = list(armaOrder = c(0, 0)),
+                        variance.model = list(model = "sGARCH"),
+                        distribution.model = "sstd")
+
+# Estimate the GARCH model
+garchfit <- ugarchfit(data = sp500ret, 
+                      spec = garchspec)
+
+# Inspect the cocefficients
+coef(garchfit)
+
+# Compute the standardized returns
+stdret <- residuals(garchfit, standardize = TRUE)
+
+# Compute the standardized returns using fitted() and sigma()
+stdret <- (ret - fitted(garchfit)) / sigma(garchfit)
+
+# Chart the histogram of returns
+chart.Histogram(stdret, methods = c("add.normal","add.density" ), 
+     colorset = c("gray","red","blue"))
+
+# Lets use a GJR GARCH model on MSFT returns
+msftret<- getSymbols("MSFT", from = "1999-01-01", to = "2017-12-31", auto.assign = FALSE)
+msftret <- Delt(Ad(MSFT))
+head(msftret)
