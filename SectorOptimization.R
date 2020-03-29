@@ -191,12 +191,15 @@ lines((cumprod(1 + SOAVX["2018-08/"]) - 1), col = "red")
 addLegend("topleft", legend.names = c("Optimized", "S&P 500", "SOAVX"),
           lty = 1, lwd = 2, col = c("green", "blue", "red"))
 
+# Check the annualized returns and Sharpe ratios
 table.AnnualizedReturns(prt.rtn.opt)
 table.AnnualizedReturns(SPY)
 table.AnnualizedReturns(SOAVX)
 
+# Chart the performance summaries
 charts.PerformanceSummary(prt.rtn.opt)
 charts.PerformanceSummary(SOAVX)
 
+# Drawdowns
 table.Drawdowns(prt.rtn.opt)
 table.Drawdowns(SOAVX)
