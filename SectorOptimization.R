@@ -52,7 +52,13 @@ apply(portfolio, 2, FUN = sd, na.rm = TRUE) # Monthly standard deviation
 apply(portfolio, 2, FUN = sd, na.rm = TRUE) * sqrt(12) # Annual standard deviation
 
 cor(portfolio["2018-07/"])
-corrplot::corrplot.mixed(cor(portfolio["2018-07/"]))
+corrplot::corrplot.mixed(cor(portfolio["2018-07/2019-12"]))
+corrplot::corrplot.mixed(cor(portfolio["2020/"]))
+
+
+corr.change <- cor(portfolio["2018-07/2019-12"]) - cor(portfolio["2020/"])
+max(corr.change)
+min(corr.change)
 
 
 # Calculate returns without reballancing
@@ -84,7 +90,7 @@ charts.PerformanceSummary(prt.rebal)
 charts.RollingPerformance(prt.rebal, Rf = 0.005 / 12)
 table.DownsideRisk(prt.rebal)
 table.Stats(prt.rebal)
-chart.Histogram(R = prt.rebal, methods = c("add.normal", "add.density"))
+chart.Histogram(R = prt.rebal, breaks = 10, methods = c("add.normal", "add.density"))
 skewness(prt.rebal)
 kurtosis(prt.rebal)
 
@@ -93,9 +99,9 @@ chart.Drawdown(prt.rebal)
 table.Drawdowns(prt.rebal)
 
 # Compare returns and Sharpe ratios
-table.AnnualizedReturns(SPY)
-table.AnnualizedReturns(prt.rtn)
-table.AnnualizedReturns(prt.rebal)
+table.AnnualizedReturns(SPY, Rf = 0.005 / 12)
+table.AnnualizedReturns(prt.rtn, Rf = 0.005 / 12)
+table.AnnualizedReturns(prt.rebal, Rf = 0.005 / 12)
 
 # Return calendar
 table.CalendarReturns(SPY)
@@ -147,7 +153,8 @@ require(ROI.plugin.glpk)
 require(ROI.plugin.quadprog)
 
 # Run the optimization
-prt.opt <- optimize.portfolio.rebalancing(R = portfolio, portfolio = pspec, 
+prt.opt <- optimize.portfolio.rebalancing(R = portfolio, 
+                                          portfolio = pspec, 
                                           optimize_method = "ROI", 
                                           rebalance_on = 'months', 
                                           training_period = 1,
@@ -161,7 +168,7 @@ last(extractWeights(prt.opt))
 rowSums(extractWeights(prt.opt)) # Interestingly staying ih cash
 
 chart.Weights(prt.opt,
-              c("black", "red", "green", "cornflowerblue", "darkkhaki", "yellow", "grey", "blue", "orange", "firebrick", "darkmagenta", "darkolivegreen"))
+              c("black", "red", "green", "cornflowerblue", "darkkhaki", "yellow", "grey", "navyblue", "orange", "firebrick", "darkmagenta", "darkolivegreen"))
 
 # Calculate returns with optimized weights
 prt.rtn.opt <- Return.portfolio(R = portfolio, weights = extractWeights(prt.opt), 
@@ -192,9 +199,9 @@ addLegend("topleft", legend.names = c("Optimized", "S&P 500", "SOAVX"),
           lty = 1, lwd = 2, col = c("green", "blue", "red"))
 
 # Check the annualized returns and Sharpe ratios
-table.AnnualizedReturns(prt.rtn.opt)
-table.AnnualizedReturns(SPY)
-table.AnnualizedReturns(SOAVX)
+table.AnnualizedReturns(prt.rtn.opt, Rf = 0.005 / 12)
+table.AnnualizedReturns(SPY, Rf = 0.005 / 12)
+table.AnnualizedReturns(SOAVX, Rf = 0.005 / 12)
 
 # Chart the performance summaries
 charts.PerformanceSummary(prt.rtn.opt)
@@ -203,3 +210,98 @@ charts.PerformanceSummary(SOAVX)
 # Drawdowns
 table.Drawdowns(prt.rtn.opt)
 table.Drawdowns(SOAVX)
+
+# Cumulative performance difference between optimized portfolio and SPY
+plot((cumprod(1 + (prt.rtn.opt - SPY * 0.3)) - 1), 
+     col = "red", main = "Long Optimized Sector SPDRS / Short SPY")
+
+# Run a long short portfolio that is 30% short. On the date of the travel ban shift to 100% 
+# short, otherwise known as market neutral
+
+ls.prt.rtn <- merge(prt.rtn.opt, SPY)
+ls.prt.rtn$weights["2018/2019"] <- 0.3
+ls.prt.rtn$weights["2020/"] <- 1.0
+ls.prt.rtn$sp.wgt <- ls.prt.rtn$SPY * ls.prt.rtn$weights
+ls.prt.rtn$active.rtn <- ls.prt.rtn$portfolio.returns - ls.prt.rtn$sp.wgt
+
+chart.CumReturns(ls.prt.rtn$active.rtn, main = "Long Optimized / 30% Short / 100% Short")
+
+# plot(cumprod(1 + ls.prt.rtn$active.rtn) - 1, col = "green")
+lines(cumprod(1 + SPY) - 1, col = "red")
+addLegend("topleft", legend.names = c("Optimized L/S", "S&P 500"),
+          lty = 1, lwd = 2, col = c("black", "red"))
+
+
+table.AnnualizedReturns(SPY, Rf = 0.004 / 12)
+table.AnnualizedReturns(ls.prt.rtn$active.rtn, Rf = 0.004 / 12)
+
+
+## Generate a long / short optimized portfolio that shorts specific sectors
+# First remove the portfolio specification object
+rm(pspec)
+
+# Load DEoptim in the event we use a risk budget, StdDev, or another constraint not supported by ROI
+library(DEoptim)
+
+# Reset the portfolio specification
+rm(ls.pspec)
+
+ls.pspec <- portfolio.spec(assets = tickers, weight_seq = weights)
+
+print.default(ls.pspec)
+ls.pspec
+
+# Add weight constraints
+#ls.pspec <- add.constraint(portfolio = ls.pspec, 
+#                        type = "dollar_neutral")
+
+ls.pspec <- add.constraint(portfolio = ls.pspec, 
+                           type = "weight_sum",
+                           min_sum = -1,
+                           max_sum = 1)
+
+# Add box constraint for each sector between 0 and 1.5X market weight
+ls.pspec <- add.constraint(portfolio = ls.pspec, type = 'box', 
+                        min = -c(weights[-length(weights)] * 1.5, 0), 
+                        max = c(weights[-length(weights)] * 1.5, 0.05))
+
+# Add objective to minimize risk of expected tail loss at 95% confidence
+ls.pspec <- add.objective(portfolio = ls.pspec, 
+                       type = 'risk',
+                       name = 'ES')
+
+# Add objective for return
+ls.pspec <- add.objective(portfolio = ls.pspec, 
+                       type = 'return', 
+                       name = 'mean')
+
+# Inspect the portfolio object
+print.default(ls.pspec)
+
+# Run the optimization
+ls.prt.opt <- optimize.portfolio.rebalancing(R = portfolio, 
+                                          portfolio = ls.pspec, 
+                                          optimize_method = "ROI", 
+                                          rebalance_on = 'months', 
+                                          training_period = 1,
+                                          rolling_window = 6)
+
+# Chart weights
+chart.Weights(ls.prt.opt,
+              c("black", "red", "green", "cornflowerblue", "darkkhaki", "yellow", "grey", "navyblue", "orange", "firebrick", "darkmagenta", "darkolivegreen"))
+
+# Inspect Weights
+extractWeights(ls.prt.opt)
+rowSums(extractWeights(ls.prt.opt))
+last(extractWeights(ls.prt.opt), 3)
+plot(index(extractWeights(ls.prt.opt)), rowSums(extractWeights(ls.prt.opt)), type = "l")
+
+# Calculate long / short portfolio returns
+ls.prt.rtn <- Return.portfolio(R = portfolio, weights = extractWeights(ls.prt.opt), 
+                               rebalance_on = "months")
+
+chart.CumReturns(ls.prt.rtn, 
+                 ylim = c(-0.1, .25))
+lines(cumprod(1 + SPY) - 1, col = "red")
+
+table.AnnualizedReturns(ls.prt.rtn, Rf = 0.004 / 12)
