@@ -99,9 +99,9 @@ chart.Drawdown(prt.rebal)
 table.Drawdowns(prt.rebal)
 
 # Compare returns and Sharpe ratios
-table.AnnualizedReturns(SPY, Rf = 0.005 / 12)
-table.AnnualizedReturns(prt.rtn, Rf = 0.005 / 12)
-table.AnnualizedReturns(prt.rebal, Rf = 0.005 / 12)
+table.AnnualizedReturns(SPY, Rf = 0.003 / 12)
+table.AnnualizedReturns(prt.rtn, Rf = 0.003 / 12)
+table.AnnualizedReturns(prt.rebal, Rf = 0.003 / 12)
 
 # Return calendar
 table.CalendarReturns(SPY)
@@ -199,9 +199,9 @@ addLegend("topleft", legend.names = c("Optimized", "S&P 500", "SOAVX"),
           lty = 1, lwd = 2, col = c("green", "blue", "red"))
 
 # Check the annualized returns and Sharpe ratios
-table.AnnualizedReturns(prt.rtn.opt, Rf = 0.005 / 12)
-table.AnnualizedReturns(SPY, Rf = 0.005 / 12)
-table.AnnualizedReturns(SOAVX, Rf = 0.005 / 12)
+table.AnnualizedReturns(prt.rtn.opt, Rf = 0.003 / 12)
+table.AnnualizedReturns(SPY, Rf = 0.003 / 12)
+table.AnnualizedReturns(SOAVX, Rf = 0.003 / 12)
 
 # Chart the performance summaries
 charts.PerformanceSummary(prt.rtn.opt)
@@ -210,6 +210,9 @@ charts.PerformanceSummary(SOAVX)
 # Drawdowns
 table.Drawdowns(prt.rtn.opt)
 table.Drawdowns(SOAVX)
+
+# Look at the monthly returns
+merge(prt.rtn.opt, SPY, SOAVX)
 
 # Cumulative performance difference between optimized portfolio and SPY
 plot((cumprod(1 + (prt.rtn.opt - SPY * 0.3)) - 1), 
