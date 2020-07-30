@@ -203,16 +203,36 @@ table.AnnualizedReturns(prt.rtn.opt, Rf = 0.003 / 12)
 table.AnnualizedReturns(SPY, Rf = 0.003 / 12)
 table.AnnualizedReturns(SOAVX, Rf = 0.003 / 12)
 
+# Calculate the total returns
+tot.ret <- function(x){
+  tmp <- cumprod(1 + x) - 1
+  last(tmp)
+}
+
+returns <- merge(prt.rtn.opt, SPY, SOAVX)
+
+returns[1, ] <- 0
+
+apply(returns, 2, FUN = tot.ret)
+
+# Recreate the plot with 0 in first month
+plot((cumprod(1 + returns$SPY) - 1), col = "blue", 
+     ylim = c(-0.2, 0.35),
+     main = "Optimized Portfolio vs. S&P 500 vs. SOAVX")
+lines((cumprod(1 + returns$portfolio.returns) - 1), col = "green", lwd = 2)
+lines((cumprod(1 + returns$SOAVX) - 1), col = "red")
+addLegend("topleft", legend.names = c("Optimized", "S&P 500", "SOAVX"),
+          lty = 1, lwd = 2, col = c("green", "blue", "red"))
+
+# Check the Sharpe ratios
+apply(returns[-1, ], 2, table.AnnualizedReturns)
+
 # Chart the performance summaries
-charts.PerformanceSummary(prt.rtn.opt)
-charts.PerformanceSummary(SOAVX)
+charts.PerformanceSummary(returns)
 
 # Drawdowns
 table.Drawdowns(prt.rtn.opt)
 table.Drawdowns(SOAVX)
-
-# Look at the monthly returns
-merge(prt.rtn.opt, SPY, SOAVX)
 
 # Cumulative performance difference between optimized portfolio and SPY
 plot((cumprod(1 + (prt.rtn.opt - SPY * 0.3)) - 1), 
@@ -255,23 +275,23 @@ print.default(ls.pspec)
 ls.pspec
 
 # Add weight constraints
-#ls.pspec <- add.constraint(portfolio = ls.pspec, 
-#                        type = "dollar_neutral")
-
 ls.pspec <- add.constraint(portfolio = ls.pspec, 
-                           type = "weight_sum",
-                           min_sum = -1,
-                           max_sum = 1)
+                        type = "dollar_neutral")
+
+# ls.pspec <- add.constraint(portfolio = ls.pspec, 
+#                           type = "weight_sum",
+#                           min_sum = -1,
+#                           max_sum = 1)
 
 # Add box constraint for each sector between 0 and 1.5X market weight
 ls.pspec <- add.constraint(portfolio = ls.pspec, type = 'box', 
-                        min = -c(weights[-length(weights)] * 1.5, 0), 
-                        max = c(weights[-length(weights)] * 1.5, 0.05))
+                         min = -c(weights[-length(weights)] * 1.5, 0), 
+                         max = c(weights[-length(weights)] * 1.5, 0.05))
 
 # Add objective to minimize risk of expected tail loss at 95% confidence
 ls.pspec <- add.objective(portfolio = ls.pspec, 
                        type = 'risk',
-                       name = 'ES')
+                       name = 'StdDev')
 
 # Add objective for return
 ls.pspec <- add.objective(portfolio = ls.pspec, 
@@ -284,7 +304,7 @@ print.default(ls.pspec)
 # Run the optimization
 ls.prt.opt <- optimize.portfolio.rebalancing(R = portfolio, 
                                           portfolio = ls.pspec, 
-                                          optimize_method = "ROI", 
+                                          optimize_method = "DEoptim", 
                                           rebalance_on = 'months', 
                                           training_period = 1,
                                           rolling_window = 6)
