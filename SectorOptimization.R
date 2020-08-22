@@ -269,24 +269,25 @@ library(DEoptim)
 # Reset the portfolio specification
 rm(ls.pspec)
 
-ls.pspec <- portfolio.spec(assets = tickers, weight_seq = weights)
+ls.pspec <- portfolio.spec(assets = tickers[-length(tickers)], 
+                           weight_seq = weights[-length(weights)])
 
 print.default(ls.pspec)
 ls.pspec
 
 # Add weight constraints
-ls.pspec <- add.constraint(portfolio = ls.pspec, 
-                        type = "dollar_neutral")
-
 # ls.pspec <- add.constraint(portfolio = ls.pspec, 
-#                           type = "weight_sum",
-#                           min_sum = -1,
-#                           max_sum = 1)
+#                        type = "dollar_neutral")
 
-# Add box constraint for each sector between 0 and 1.5X market weight
+ls.pspec <- add.constraint(portfolio = ls.pspec, 
+                          type = "weight_sum",
+                          min_sum = -.1,
+                          max_sum = .1)
+
+# Add box constraint for each sector between 1.5X and -1.5X market weight
 ls.pspec <- add.constraint(portfolio = ls.pspec, type = 'box', 
-                         min = -c(weights[-length(weights)] * 1.5, 0), 
-                         max = c(weights[-length(weights)] * 1.5, 0.05))
+                         min = -.25, 
+                         max = .25)
 
 # Add objective to minimize risk of expected tail loss at 95% confidence
 ls.pspec <- add.objective(portfolio = ls.pspec, 
@@ -324,7 +325,39 @@ ls.prt.rtn <- Return.portfolio(R = portfolio, weights = extractWeights(ls.prt.op
                                rebalance_on = "months")
 
 chart.CumReturns(ls.prt.rtn, 
-                 ylim = c(-0.1, .25))
-lines(cumprod(1 + SPY) - 1, col = "red")
+                 ylim = c(-0.15, .35))
+lines(cumprod(1 + SPY) - 1, col = "green")
 
 table.AnnualizedReturns(ls.prt.rtn, Rf = 0.004 / 12)
+
+# Create an account that owns the dollar neutral long/short portfolio and keeps collateral in T-Bills
+dn.prt.rtn <- merge.xts(ls.prt.rtn, as.xts(rowSums(extractWeights(ls.prt.opt)[-1]), order.by = index(ls.prt.rtn)), portfolio$BIL[-1])
+names(dn.prt.rtn) <- c("Port", "Weight", "TBill")
+
+# Calculate the portfolio returns plus T-Bill returns times 1 - net portfolio weight
+dn.prt.rtn$Acct <- dn.prt.rtn$Port + dn.prt.rtn$TBill * (1 - dn.prt.rtn$Weight)
+
+# Take a look
+dn.prt.rtn
+
+# Chart
+chart.CumReturns(SPY[-1], ylim = c(-0.1, 0.35))
+lines(cumprod(1 + dn.prt.rtn$Port) - 1, col = "red", lwd = 2)
+lines(cumprod(1 + dn.prt.rtn$Acct) - 1, col = "green", lwd = 2)
+addLegend("topleft", legend.names = c("S&P 500", "L/S Port", "Account"),
+          lty = 1, lwd = 2, col = c("black", "red", "green"))
+
+
+# Examine performance
+dn.returns <- merge(SPY, dn.prt.rtn[ , c(1, 4)])
+dn.returns[1, ] <- 0
+
+# Chart drawdowns
+charts.PerformanceSummary(dn.returns)
+table.Drawdowns(dn.returns$SPY)
+table.Drawdowns(dn.returns$Acct)
+
+# Performance tables
+table.AnnualizedReturns(dn.returns[-1, ], Rf = mean(portfolio$BIL) / 12)
+
+apply(dn.returns[-1, ], MARGIN = 2, FUN = tot.ret)
